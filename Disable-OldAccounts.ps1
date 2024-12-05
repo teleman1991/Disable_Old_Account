@@ -43,10 +43,10 @@ try {
     }
 
     if ($Users.Count -eq 0) {
-        Write-Log "No inactive accounts found"
+        Write-Log "No inactive local accounts found"
     }
     else {
-        Write-Log "Found $($Users.Count) inactive account(s)"
+        Write-Log "Found $($Users.Count) inactive local account(s)"
         
         foreach ($User in $Users) {
             try {
@@ -55,13 +55,46 @@ try {
                 if ($CurrentUser -notlike "*$($User.Name)") {
                     # Disable the account silently
                     Disable-LocalUser -Name $User.Name -ErrorAction SilentlyContinue
-                    Write-Log "Disabled account: $($User.Name) - Last logon: $($User.LastLogon)"
+                    Write-Log "Disabled local account: $($User.Name) - Last logon: $($User.LastLogon)"
+                    
+                    # Remove user profile folder
+                    $ProfilePath = "C:\Users\$($User.Name)"
+                    if (Test-Path $ProfilePath) {
+                        Remove-Item -Path $ProfilePath -Recurse -Force -ErrorAction SilentlyContinue
+                        Write-Log "Deleted profile folder for local user: $($User.Name)"
+                    }
                 } else {
-                    Write-Log "Skipped currently logged-in user: $($User.Name)"
+                    Write-Log "Skipped currently logged-in local user: $($User.Name)"
                 }
             }
             catch {
-                Write-Log "Failed to process account $($User.Name): $_"
+                Write-Log "Failed to process local account $($User.Name): $_"
+            }
+        }
+    }
+
+    # Remove user profile folders that haven't been modified in the last 90 days
+    $ProfileFolders = Get-ChildItem -Path "C:\Users" -Directory | Where-Object {
+        ($_.LastWriteTime -lt $CutoffDate) -and 
+        ($_.Name -notlike "Administrator") -and 
+        ($_.Name -notlike "DefaultAccount") -and 
+        ($_.Name -notlike "WDAGUtilityAccount") -and
+        ($_.Name -notlike "*$")
+    }
+
+    if ($ProfileFolders.Count -eq 0) {
+        Write-Log "No old profile folders found"
+    }
+    else {
+        Write-Log "Found $($ProfileFolders.Count) old profile folder(s)"
+        
+        foreach ($ProfileFolder in $ProfileFolders) {
+            try {
+                Remove-Item -Path $ProfileFolder.FullName -Recurse -Force -ErrorAction SilentlyContinue
+                Write-Log "Deleted old profile folder: $($ProfileFolder.Name)"
+            }
+            catch {
+                Write-Log "Failed to delete profile folder $($ProfileFolder.Name): $_"
             }
         }
     }
